@@ -46,7 +46,8 @@ import org.springframework.data.redis.ConnectionFactoryTracker;
 import org.springframework.data.redis.RedisTestProfileValueSource;
 import org.springframework.data.redis.SettingsUtils;
 import org.springframework.data.redis.TestCondition;
-import org.springframework.data.redis.connection.ConnectionUtils;
+import org.springframework.data.redis.connection.ClusterTestVariables;
+import org.springframework.data.redis.connection.RedisClusterConfiguration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.jedis.JedisConnectionFactory;
 import org.springframework.data.redis.connection.jredis.JredisConnectionFactory;
@@ -117,6 +118,13 @@ public class PubSubResubscribeTests {
 		lettuceConnFactory.setValidateConnection(true);
 		lettuceConnFactory.afterPropertiesSet();
 
+		LettuceConnectionFactory lettuceClusterConnFactory = new LettuceConnectionFactory(new RedisClusterConfiguration().clusterNode(ClusterTestVariables.CLUSTER_NODE_1));
+		lettuceClusterConnFactory.setClientResources(LettuceTestClientResources.getSharedClientResources());
+		lettuceClusterConnFactory.setPort(port);
+		lettuceClusterConnFactory.setHostName(host);
+		lettuceClusterConnFactory.setValidateConnection(true);
+		lettuceClusterConnFactory.afterPropertiesSet();
+
 		// SRP
 		SrpConnectionFactory srpConnFactory = new SrpConnectionFactory();
 		srpConnFactory.setPort(port);
@@ -130,15 +138,12 @@ public class PubSubResubscribeTests {
 		jRedisConnectionFactory.setDatabase(2);
 		jRedisConnectionFactory.afterPropertiesSet();
 
-		return Arrays.asList(new Object[][] { { jedisConnFactory }, { lettuceConnFactory }, { srpConnFactory },
-				{ jRedisConnectionFactory } });
+		return Arrays.asList(new Object[][] { { jedisConnFactory }, { lettuceConnFactory },
+				{ lettuceConnFactory }, { srpConnFactory }});
 	}
 
 	@Before
 	public void setUp() throws Exception {
-
-		// JredisConnection#publish is currently not supported -> tests would fail
-		assumeThat(ConnectionUtils.isJredis(factory), is(false));
 
 		template = new StringRedisTemplate(factory);
 

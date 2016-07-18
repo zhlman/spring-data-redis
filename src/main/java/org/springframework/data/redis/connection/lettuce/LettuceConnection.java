@@ -3870,7 +3870,7 @@ public class LettuceConnection extends AbstractRedisConnection {
 		}
 	}
 
-	private RedisPubSubConnection<byte[], byte[]> switchToPubSub() {
+	protected RedisPubSubConnection<byte[], byte[]> switchToPubSub() {
 		close();
 		// open a pubsub one
 		return ((RedisClient) client).connectPubSub(CODEC);
@@ -3926,6 +3926,11 @@ public class LettuceConnection extends AbstractRedisConnection {
 		if (this.pool != null) {
 			return pool.getResource();
 		} else {
+
+			if(!(client instanceof RedisClient)) {
+				throw new IllegalStateException("No standalone-client configured");
+			}
+
 			return ((RedisClient) client).connectAsync(CODEC);
 		}
 	}
@@ -4063,6 +4068,10 @@ public class LettuceConnection extends AbstractRedisConnection {
 			return false;
 		}
 
+		if(!(client instanceof RedisClient)) {
+			throw new IllegalStateException("No standalone-client configured");
+		}
+
 		RedisConnection<String, String> connection = null;
 		try {
 			connection = ((RedisClient) client).connect(getRedisURI(node));
@@ -4086,6 +4095,11 @@ public class LettuceConnection extends AbstractRedisConnection {
 	 */
 	@Override
 	protected RedisSentinelConnection getSentinelConnection(RedisNode sentinel) {
+
+		if(!(client instanceof RedisClient)) {
+			throw new IllegalStateException("No Sentinel client configured");
+		}
+
 		RedisSentinelAsyncConnection<String, String> connection = ((RedisClient) client)
 				.connectSentinelAsync(getRedisURI(sentinel));
 		return new LettuceSentinelConnection(connection);

@@ -52,6 +52,7 @@ import com.lambdaworks.redis.RedisFuture;
 import com.lambdaworks.redis.RedisURI;
 import com.lambdaworks.redis.cluster.RedisClusterClient;
 import com.lambdaworks.redis.resource.ClientResources;
+import com.lambdaworks.redis.resource.DefaultClientResources;
 
 /**
  * Connection factory creating <a href="http://github.com/mp911de/lettuce">Lettuce</a>-based connections.
@@ -83,7 +84,8 @@ public class LettuceConnectionFactory implements InitializingBean, DisposableBea
 
 	private String hostName = "localhost";
 	private int port = 6379;
-	private AbstractRedisClient client;
+	private RedisClient redisClient;
+	private RedisClusterClient clusterClient;
 	private long timeout = TimeUnit.MILLISECONDS.convert(60, TimeUnit.SECONDS);
 	private long shutdownTimeout = TimeUnit.MILLISECONDS.convert(2, TimeUnit.SECONDS);
 	private boolean validateConnection = false;
@@ -99,6 +101,7 @@ public class LettuceConnectionFactory implements InitializingBean, DisposableBea
 	private RedisClusterConfiguration clusterConfiguration;
 	private ClusterCommandExecutor clusterCommandExecutor;
 	private ClientResources clientResources;
+	private boolean dedicatedClientResources;
 	private boolean useSsl = false;
 	private boolean verifyPeer = true;
 	private boolean startTls = false;
@@ -146,7 +149,14 @@ public class LettuceConnectionFactory implements InitializingBean, DisposableBea
 	 * @see org.springframework.beans.factory.InitializingBean#afterPropertiesSet()
 	 */
 	public void afterPropertiesSet() {
-		this.client = createRedisClient();
+
+		if(clientResources == null){
+			clientResources = DefaultClientResources.create();
+			dedicatedClientResources = true;
+		}
+
+		this.redisClient = createRedisClient();
+		this.clusterClient = createClusterClient();
 	}
 
 	/*
@@ -157,14 +167,16 @@ public class LettuceConnectionFactory implements InitializingBean, DisposableBea
 
 		resetConnection();
 
-		try {
-			client.shutdown(shutdownTimeout, shutdownTimeout, TimeUnit.MILLISECONDS);
-		} catch (Exception e) {
+		if(redisClient != null) {
+			shutdown(redisClient);
+		}
 
-			if (log.isWarnEnabled()) {
-				log.warn((client != null ? ClassUtils.getShortName(client.getClass()) : "LettuceClient")
-						+ " did not shut down gracefully.", e);
-			}
+		if(clusterClient != null) {
+			shutdown(clusterClient);
+		}
+
+		if(dedicatedClientResources) {
+			clientResources.shutdown(shutdownTimeout, shutdownTimeout, TimeUnit.MILLISECONDS);
 		}
 
 		if (clusterCommandExecutor != null) {
@@ -173,6 +185,18 @@ public class LettuceConnectionFactory implements InitializingBean, DisposableBea
 				clusterCommandExecutor.destroy();
 			} catch (Exception ex) {
 				log.warn("Cannot properly close cluster command executor", ex);
+			}
+		}
+	}
+
+	private void shutdown(AbstractRedisClient client) {
+		try {
+			client.shutdown(shutdownTimeout, shutdownTimeout, TimeUnit.MILLISECONDS);
+		} catch (Exception e) {
+
+			if (log.isWarnEnabled()) {
+				log.warn((client != null ? ClassUtils.getShortName(client.getClass()) : "LettuceClient")
+						+ " did not shut down gracefully.", e);
 			}
 		}
 	}
@@ -187,7 +211,7 @@ public class LettuceConnectionFactory implements InitializingBean, DisposableBea
 			return getClusterConnection();
 		}
 
-		LettuceConnection connection = new LettuceConnection(getSharedConnection(), timeout, client, pool, dbIndex);
+		LettuceConnection connection = new LettuceConnection(getSharedConnection(), timeout, redisClient, pool, dbIndex);
 		connection.setConvertPipelineAndTxResults(convertPipelineAndTxResults);
 		return connection;
 	}
@@ -203,7 +227,7 @@ public class LettuceConnectionFactory implements InitializingBean, DisposableBea
 			throw new InvalidDataAccessApiUsageException("Cluster is not configured!");
 		}
 
-		return new LettuceClusterConnection((RedisClusterClient) client, clusterCommandExecutor);
+		return new LettuceClusterConnection(clusterClient, redisClient, clusterCommandExecutor);
 	}
 
 	public void initConnection() {
@@ -530,60 +554,48 @@ public class LettuceConnectionFactory implements InitializingBean, DisposableBea
 	protected RedisAsyncConnection<byte[], byte[]> createLettuceConnector() {
 		try {
 
-			RedisAsyncConnection connection = null;
-			if (client instanceof RedisClient) {
-				connection = ((RedisClient) client).connectAsync(LettuceConnection.CODEC);
-				if (dbIndex > 0) {
-					connection.select(dbIndex);
-				}
-			} else {
-				connection = (RedisAsyncConnection<byte[], byte[]>) ((RedisClusterClient) client)
-						.connectClusterAsync(LettuceConnection.CODEC);
+			if(isClusterAware()) {
+				return (RedisAsyncConnection<byte[], byte[]>) clusterClient.connectClusterAsync(LettuceConnection.CODEC);
 			}
+
+			RedisAsyncConnection connection = redisClient.connectAsync(LettuceConnection.CODEC);
+			if (dbIndex > 0) {
+				connection.select(dbIndex);
+			}
+
 			return connection;
 		} catch (RedisException e) {
 			throw new RedisConnectionFailureException("Unable to connect to Redis on " + getHostName() + ":" + getPort(), e);
 		}
 	}
 
-	private AbstractRedisClient createRedisClient() {
+	private RedisClient createRedisClient() {
 
 		if (isRedisSentinelAware()) {
 
 			RedisURI redisURI = getSentinelRedisURI();
-			if (clientResources == null) {
-				return RedisClient.create(redisURI);
-			}
 
 			return RedisClient.create(clientResources, redisURI);
 		}
 
 		if (isClusterAware()) {
 
-			List<RedisURI> initialUris = new ArrayList<RedisURI>();
 			for (RedisNode node : this.clusterConfiguration.getClusterNodes()) {
 
 				RedisURI redisURI = new RedisURI(node.getHost(), node.getPort(), timeout, TimeUnit.MILLISECONDS);
 
+				RedisURI.Builder builder = RedisURI.Builder.redis(hostName, port);
 				if (StringUtils.hasText(password)) {
 					redisURI.setPassword(password);
 				}
 
-				initialUris.add(redisURI);
+				builder.withSsl(useSsl);
+				builder.withVerifyPeer(verifyPeer);
+				builder.withStartTls(startTls);
+				builder.withTimeout(timeout, TimeUnit.MILLISECONDS);
+
+				return RedisClient.create(clientResources, builder.build());
 			}
-
-			RedisClusterClient clusterClient;
-			if (clientResources == null) {
-				clusterClient = RedisClusterClient.create(initialUris);
-			} else {
-				clusterClient = RedisClusterClient.create(clientResources, initialUris);
-			}
-
-			this.clusterCommandExecutor = new ClusterCommandExecutor(
-					new LettuceClusterConnection.LettuceClusterTopologyProvider(clusterClient),
-					new LettuceClusterConnection.LettuceClusterNodeResourceProvider(clusterClient), EXCEPTION_TRANSLATION);
-
-			return clusterClient;
 		}
 
 		if (pool != null) {
@@ -600,11 +612,35 @@ public class LettuceConnectionFactory implements InitializingBean, DisposableBea
 		builder.withStartTls(startTls);
 		builder.withTimeout(timeout, TimeUnit.MILLISECONDS);
 
-		if (clientResources != null) {
-			return RedisClient.create(clientResources, builder.build());
+		return RedisClient.create(clientResources, builder.build());
+	}
+
+	private RedisClusterClient createClusterClient() {
+
+		if (isClusterAware()) {
+
+			List<RedisURI> initialUris = new ArrayList<RedisURI>();
+			for (RedisNode node : this.clusterConfiguration.getClusterNodes()) {
+
+				RedisURI redisURI = new RedisURI(node.getHost(), node.getPort(), timeout, TimeUnit.MILLISECONDS);
+
+				if (StringUtils.hasText(password)) {
+					redisURI.setPassword(password);
+				}
+
+				initialUris.add(redisURI);
+			}
+
+			RedisClusterClient clusterClient = RedisClusterClient.create(clientResources, initialUris);
+
+			this.clusterCommandExecutor = new ClusterCommandExecutor(
+					new LettuceClusterConnection.LettuceClusterTopologyProvider(clusterClient),
+					new LettuceClusterConnection.LettuceClusterNodeResourceProvider(clusterClient), EXCEPTION_TRANSLATION);
+
+			return clusterClient;
 		}
 
-		return RedisClient.create(builder.build());
+		return null;
 	}
 
 	private RedisURI getSentinelRedisURI() {
@@ -636,9 +672,9 @@ public class LettuceConnectionFactory implements InitializingBean, DisposableBea
 	@Override
 	public RedisSentinelConnection getSentinelConnection() {
 
-		if (!(client instanceof RedisClient)) {
-			throw new InvalidDataAccessResourceUsageException("Unable to connect to sentinels using " + client.getClass());
+		if (!(redisClient instanceof RedisClient)) {
+			throw new InvalidDataAccessResourceUsageException("Unable to connect to sentinels using " + redisClient.getClass());
 		}
-		return new LettuceSentinelConnection(((RedisClient) client).connectSentinelAsync());
+		return new LettuceSentinelConnection(redisClient.connectSentinelAsync());
 	}
 }

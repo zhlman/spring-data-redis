@@ -38,4 +38,5 @@ Import-Template:
  redis.*;resolution:="optional";version="[0.2, 1.0)",
  com.google.common.*;resolution:="optional";version="[11.0.0, 20.0.0)",
  com.lambdaworks.redis.*;resolution:="optional";version="[3.3, 4)",
- io.netty.channel.*;resolution:="optional";version="[4.0.0, 5.0.0)"
+ io.netty.channel.*;resolution:="optional";version="[4.0.0, 5.0.0)",
+ io.netty.util.*;resolution:="optional";version="[4.0.0, 5.0.0)"

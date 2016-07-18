@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 the original author or authors.
+ * Copyright 2015-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,13 +59,16 @@ import org.springframework.util.ObjectUtils;
 import com.lambdaworks.redis.KeyValue;
 import com.lambdaworks.redis.RedisAsyncConnection;
 import com.lambdaworks.redis.RedisAsyncConnectionImpl;
+import com.lambdaworks.redis.RedisClient;
 import com.lambdaworks.redis.RedisClusterConnection;
 import com.lambdaworks.redis.RedisConnection;
 import com.lambdaworks.redis.RedisException;
 import com.lambdaworks.redis.cluster.RedisClusterClient;
 import com.lambdaworks.redis.cluster.SlotHash;
 import com.lambdaworks.redis.cluster.models.partitions.Partitions;
+import com.lambdaworks.redis.cluster.models.partitions.RedisClusterNode.NodeFlag;
 import com.lambdaworks.redis.codec.RedisCodec;
+import com.lambdaworks.redis.pubsub.RedisPubSubConnection;
 
 /**
  * @author Christoph Strobl
@@ -80,6 +83,7 @@ public class LettuceClusterConnection extends LettuceConnection
 	static final RedisCodec<byte[], byte[]> CODEC = new BytesRedisCodec();
 
 	private final RedisClusterClient clusterClient;
+	private final RedisClient redisClient;
 	private ClusterCommandExecutor clusterCommandExecutor;
 	private ClusterTopologyProvider topologyProvider;
 
@@ -95,6 +99,7 @@ public class LettuceClusterConnection extends LettuceConnection
 		Assert.notNull(clusterClient, "RedisClusterClient must not be null.");
 
 		this.clusterClient = clusterClient;
+		this.redisClient = null;
 		topologyProvider = new LettuceClusterTopologyProvider(clusterClient);
 		clusterCommandExecutor = new ClusterCommandExecutor(topologyProvider,
 				new LettuceClusterNodeResourceProvider(clusterClient), exceptionConverter);
@@ -115,6 +120,29 @@ public class LettuceClusterConnection extends LettuceConnection
 		Assert.notNull(executor, "ClusterCommandExecutor must not be null.");
 
 		this.clusterClient = clusterClient;
+		this.redisClient = null;
+		topologyProvider = new LettuceClusterTopologyProvider(clusterClient);
+		clusterCommandExecutor = executor;
+	}
+
+	/**
+	 * Creates new {@link LettuceClusterConnection} using {@link RedisClusterClient} running commands across the cluster
+	 * via given {@link ClusterCommandExecutor}.
+	 *
+	 * @param clusterClient must not be {@literal null}.
+	 * @param executor must not be {@literal null}.
+	 * @since 1.8
+	 */
+	LettuceClusterConnection(RedisClusterClient clusterClient, RedisClient redisClient, ClusterCommandExecutor executor) {
+
+		super(null, 100, clusterClient, null, 0);
+
+		Assert.notNull(clusterClient, "RedisClusterClient must not be null.");
+		Assert.notNull(redisClient, "RedisClient must not be null.");
+		Assert.notNull(executor, "ClusterCommandExecutor must not be null.");
+
+		this.clusterClient = clusterClient;
+		this.redisClient = redisClient;
 		topologyProvider = new LettuceClusterTopologyProvider(clusterClient);
 		clusterCommandExecutor = executor;
 	}
@@ -1539,6 +1567,36 @@ public class LettuceClusterConnection extends LettuceConnection
 		return result;
 	}
 
+	/* 
+	 * (non-Javadoc)
+	 * @see org.springframework.data.redis.connection.lettuce.LettuceConnection#switchToPubSub()
+	 * @since 1.8
+	 */
+	@Override
+	protected RedisPubSubConnection<byte[], byte[]> switchToPubSub() {
+
+		close();
+		// open a pubsub one
+
+		if (redisClient == null) {
+			throw new IllegalStateException("No standalone-client configured");
+		}
+
+		for (com.lambdaworks.redis.cluster.models.partitions.RedisClusterNode redisClusterNode : clusterClient
+				.getPartitions()) {
+
+			if (redisClusterNode.getFlags().contains(NodeFlag.EVENTUAL_FAIL)
+					|| redisClusterNode.getFlags().contains(NodeFlag.FAIL)) {
+				continue;
+			}
+
+			return redisClient.connectPubSub(CODEC, redisClusterNode.getUri());
+		}
+
+		return redisClient.connectPubSub(CODEC);
+
+	}
+
 	/**
 	 * Lettuce specific implementation of {@link ClusterCommandCallback}.
 	 *
@@ -1635,5 +1693,4 @@ public class LettuceClusterConnection extends LettuceConnection
 					new LinkedHashSet<RedisClusterNode>(LettuceConverters.partitionsToClusterNodes(client.getPartitions())));
 		}
 	}
-
 }

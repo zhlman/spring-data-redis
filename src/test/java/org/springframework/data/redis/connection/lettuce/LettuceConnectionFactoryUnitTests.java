@@ -66,7 +66,7 @@ public class LettuceConnectionFactoryUnitTests {
 		connectionFactory.afterPropertiesSet();
 		ConnectionFactoryTracker.add(connectionFactory);
 
-		assertThat(getField(connectionFactory, "client"), instanceOf(RedisClusterClient.class));
+		assertThat(getField(connectionFactory, "clusterClient"), instanceOf(RedisClusterClient.class));
 	}
 
 	/**
@@ -82,7 +82,7 @@ public class LettuceConnectionFactoryUnitTests {
 		connectionFactory.afterPropertiesSet();
 		ConnectionFactoryTracker.add(connectionFactory);
 
-		AbstractRedisClient client = (AbstractRedisClient) getField(connectionFactory, "client");
+		AbstractRedisClient client = (AbstractRedisClient) getField(connectionFactory, "clusterClient");
 		assertThat(client, instanceOf(RedisClusterClient.class));
 
 		Iterable<RedisURI> initialUris = (Iterable<RedisURI>) getField(client, "initialUris");
@@ -106,7 +106,7 @@ public class LettuceConnectionFactoryUnitTests {
 		connectionFactory.afterPropertiesSet();
 		ConnectionFactoryTracker.add(connectionFactory);
 
-		AbstractRedisClient client = (AbstractRedisClient) getField(connectionFactory, "client");
+		AbstractRedisClient client = (AbstractRedisClient) getField(connectionFactory, "clusterClient");
 		assertThat(client, instanceOf(RedisClusterClient.class));
 
 		Iterable<RedisURI> initialUris = (Iterable<RedisURI>) getField(client, "initialUris");
@@ -130,7 +130,7 @@ public class LettuceConnectionFactoryUnitTests {
 		connectionFactory.afterPropertiesSet();
 		ConnectionFactoryTracker.add(connectionFactory);
 
-		AbstractRedisClient client = (AbstractRedisClient) getField(connectionFactory, "client");
+		AbstractRedisClient client = (AbstractRedisClient) getField(connectionFactory, "redisClient");
 		assertThat(client, instanceOf(RedisClient.class));
 
 		RedisURI redisUri = (RedisURI) getField(client, "redisURI");
@@ -150,7 +150,7 @@ public class LettuceConnectionFactoryUnitTests {
 		connectionFactory.afterPropertiesSet();
 		ConnectionFactoryTracker.add(connectionFactory);
 
-		AbstractRedisClient client = (AbstractRedisClient) getField(connectionFactory, "client");
+		AbstractRedisClient client = (AbstractRedisClient) getField(connectionFactory, "clusterClient");
 		assertThat(client, instanceOf(RedisClusterClient.class));
 	}
 
@@ -165,7 +165,7 @@ public class LettuceConnectionFactoryUnitTests {
 		connectionFactory.afterPropertiesSet();
 		ConnectionFactoryTracker.add(connectionFactory);
 
-		AbstractRedisClient client = (AbstractRedisClient) getField(connectionFactory, "client");
+		AbstractRedisClient client = (AbstractRedisClient) getField(connectionFactory, "redisClient");
 		assertThat(client, instanceOf(RedisClient.class));
 
 		RedisURI redisUri = (RedisURI) getField(client, "redisURI");
@@ -190,7 +190,7 @@ public class LettuceConnectionFactoryUnitTests {
 		connectionFactory.afterPropertiesSet();
 		ConnectionFactoryTracker.add(connectionFactory);
 
-		AbstractRedisClient client = (AbstractRedisClient) getField(connectionFactory, "client");
+		AbstractRedisClient client = (AbstractRedisClient) getField(connectionFactory, "redisClient");
 		assertThat(client, instanceOf(RedisClient.class));
 
 		RedisURI redisUri = (RedisURI) getField(client, "redisURI");
@@ -213,7 +213,7 @@ public class LettuceConnectionFactoryUnitTests {
 		connectionFactory.afterPropertiesSet();
 		ConnectionFactoryTracker.add(connectionFactory);
 
-		AbstractRedisClient client = (AbstractRedisClient) getField(connectionFactory, "client");
+		AbstractRedisClient client = (AbstractRedisClient) getField(connectionFactory, "redisClient");
 		assertThat(client, instanceOf(RedisClient.class));
 
 		RedisURI redisUri = (RedisURI) getField(client, "redisURI");
@@ -234,7 +234,7 @@ public class LettuceConnectionFactoryUnitTests {
 		connectionFactory.afterPropertiesSet();
 		ConnectionFactoryTracker.add(connectionFactory);
 
-		AbstractRedisClient client = (AbstractRedisClient) getField(connectionFactory, "client");
+		AbstractRedisClient client = (AbstractRedisClient) getField(connectionFactory, "redisClient");
 		assertThat(client, instanceOf(RedisClient.class));
 
 		RedisURI redisUri = (RedisURI) getField(client, "redisURI");
